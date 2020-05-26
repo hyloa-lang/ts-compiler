@@ -1,0 +1,27 @@
+{
+  "name": "chalk-ts-compiler",
+  "version": "0.0.0",
+  "description": "TypeScript Compiler for the Chalk Programming Language",
+  "keywords": [
+    "Chalk Programming Language"
+  ],
+  "main": "out/main.js",
+  "scripts": {
+    "build": "rm -r ./out \n tsc",
+    "tables": "node --max_old_space_size=6144 ./out/parser-table-generator.js",
+    "run": "node ./out/main.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chalk-lang/ts-compiler.git"
+  },
+  "author": "Jozef Mikušinec <mik.jozef@gmail.com> (mikusinec.com)",
+  "bugs": {
+    "url": "https://github.com/chalk-lang/ts-compiler/issues"
+  },
+  "homepage": "https://github.com/chalk-lang/ts-compiler#readme",
+  "devDependencies": {
+    "@types/node": "^12.7.11"
+  },
+  "dependencies": {}
+}
