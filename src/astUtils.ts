@@ -1,4 +1,4 @@
-import { After, Before, CharClass, Or, Repeat } from './parser';
+import { After, Before, CharClass, Or, Repeat } from './sattern';
 
 const specialChars = new CharClass('()[]{}<>,.!@#$%^&*;:\'"\\|/?`~');
 

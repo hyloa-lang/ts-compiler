@@ -1,4 +1,4 @@
-import { AstNode, Expr, Match, Maybe, Repeat } from '../pattern';
+import { AstNode, Expr, Match, Maybe, Repeat } from '../sattern';
 import { space } from '../astUtils';
 
 import { Comment } from './comment';
@@ -6,12 +6,12 @@ import { Import } from './import';
 import { Expressions } from './expressions';
 
 
-export class ChalkModule extends AstNode<ChalkModule> {
+export class ChalkScriptModule extends AstNode<ChalkScriptModule> {
   moduleDoc: Comment | null = null;
   imports!: Import[];
   defs!: Expressions;
   
-  static rule: Expr<ChalkModule> = [
+  static rule: Expr<ChalkScriptModule> = [
     new Maybe([ space, new Match(Comment, "moduleDoc") ]),
     space,
     new Repeat(

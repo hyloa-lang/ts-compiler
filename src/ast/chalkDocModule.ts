@@ -1,6 +1,9 @@
 import { After, AstNode, And, Before, CharClass, Expr, Match, Maybe, Or, Repeat } from '../sattern';
 import { space } from '../astUtils';
 
-export class C extends AstNode<C> {
-  
+import { Import } from './import';
+
+
+export class ChalkDocModule extends AstNode<ChalkDocModule> {
+  imports!: Import[];
 }

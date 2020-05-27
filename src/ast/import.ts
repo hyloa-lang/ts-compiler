@@ -1,4 +1,4 @@
-import { AstNode, Expr, Match, Or } from '../pattern';
+import { AstNode, Expr, Match, Or } from '../sattern';
 import { space } from '../astUtils';
 
 export class Import {

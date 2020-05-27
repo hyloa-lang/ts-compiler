@@ -3,18 +3,20 @@
   
   Path conventions: abso
 */
-import { promises } from "fs";
-import * as Path from "path";
+import { promises } from 'fs';
+import * as Path from 'path';
 
-import { Module } from "./module";
+import { Module, ModuleSymbols } from './module';
+import { ChalkScriptModule, ChalkDocModule } from './ast';
+import { Class } from './class';
 
 const libPattern = /^([a-zA-Z][a-zA-Z0-9\-]*)(?:@(\d+.\d+.\d+))?$/;
 
-const extToSymbol: { [key: string]: string } =
-  { ".chs": "ChalkScript",
-    ".chdoc": "ChalkDoc",
+const extToSymbol: { [key: string]: Class<ModuleSymbols> } =
+  { ".chs": ChalkScriptModule,
+    ".chdoc": ChalkDocModule,
   };
-
+  
 // Morally only includes the possible output of `ModulePath.toString`;
 type ModulePathString = string;
 

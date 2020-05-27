@@ -2,7 +2,7 @@
   Regex definitions and parser.
 **/
 
-export abstract class AstNode<This> {
+export abstract class AstNode<This extends AstNode<any>> {
   constructor(matched: { [Key in keyof This]: This[Key] }) {
     Object.assign(this, matched);
   }
