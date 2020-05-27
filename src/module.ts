@@ -3,7 +3,8 @@ import { ChalkScriptModule, ChalkDocModule } from './ast';
 import { Class } from './typeUtils';
 
 const parser = new Parser(new Set([
-  
+  ChalkDocModule,
+  ChalkScriptModule,
 ]));
 
 export type ModuleSymbols = ChalkScriptModule | ChalkDocModule;
