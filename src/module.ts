@@ -1,7 +1,6 @@
-import { AstNode, Parser, Symbol } from './sattern';
+import { Parser, Symbol } from './sattern';
 import { ChalkScriptModule, ChalkDocModule } from './ast';
-import { ModulePath } from "./main";
-import { Class } from './class';
+import { Class } from './typeUtils';
 
 const parser = new Parser(new Set([
   

@@ -8,7 +8,7 @@ import * as Path from 'path';
 
 import { Module, ModuleSymbols } from './module';
 import { ChalkScriptModule, ChalkDocModule } from './ast';
-import { Class } from './class';
+import { Class } from './typeUtils';
 
 const libPattern = /^([a-zA-Z][a-zA-Z0-9\-]*)(?:@(\d+.\d+.\d+))?$/;
 

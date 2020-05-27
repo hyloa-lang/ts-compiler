@@ -1,4 +1,4 @@
-import { Class } from '../class';
+import { Class } from '../typeUtils';
 import { AstNode } from './patterns';
 
 export * from './patterns';

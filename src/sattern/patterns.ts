@@ -2,14 +2,53 @@
   Regex definitions and parser.
 **/
 
+import { FixedLengthArray } from "../typeUtils";
+
 export abstract class AstNode<This extends AstNode<any>> {
   constructor(matched: { [Key in keyof This]: This[Key] }) {
     Object.assign(this, matched);
   }
 }
 
+type CharTable = FixedLengthArray<boolean, typeof CharClass.tableSize>;
+
 export class CharClass {
-  constructor(public chars: string, public negated = true) {}
+  static tableSize = 128 as 128;
+  
+  // `tableSize[i] === true` iff ascii char `i` is included.
+  charTable: CharTable;
+  
+  constructor(chars: string | CharTable, negated = true) {
+    if (Array.isArray(chars)) {
+      this.charTable = chars as any;
+      
+      return;
+    }
+    
+    const table = [];
+    
+    for (let i = 0; i < CharClass.tableSize; i++) {
+      table.push(!negated);
+    }
+    
+    for (let char of chars as string) {
+      if (char.charCodeAt(0) >= CharClass.tableSize) {
+        throw new Error(`Cannot include char ${char} in CharClass. CharCode too high.`);
+      }
+      
+      table[char.charCodeAt(0)] = negated;
+    }
+    
+    this.charTable = table as any as FixedLengthArray<boolean, typeof CharClass.tableSize>;
+  }
+  
+  static and(a: CharClass, b: CharClass) {
+    return new CharClass(a.charTable.map((bool, i) => bool && b.charTable[i]));
+  }
+  
+  static or(a: CharClass, b: CharClass) {
+    return new CharClass(a.charTable.map((bool, i) => bool || b.charTable[i]));
+  }
 }
 
 export class Before<Node extends AstNode<Node>> {
