@@ -2,9 +2,9 @@
   Regex definitions and parser.
 **/
 
-import { FixedLengthArray } from "../typeUtils";
+import { EnumTypeType, EnumTypeValues, FixedLengthArray, RuntimeEnum } from "../typeUtils";
 
-export abstract class AstNode<This extends AstNode<any>> {
+export abstract class AstNode<This extends AstNode<This>> {
   constructor(matched: { [Key in keyof This]: This[Key] }) {
     Object.assign(this, matched);
   }
@@ -18,7 +18,7 @@ export class CharClass {
   // `tableSize[i] === true` iff ascii char `i` is included.
   charTable: CharTable;
   
-  constructor(chars: string | CharTable, negated = true) {
+  constructor(chars: string | CharTable, negated = false) {
     if (Array.isArray(chars)) {
       this.charTable = chars as any;
       
@@ -28,7 +28,7 @@ export class CharClass {
     const table = [];
     
     for (let i = 0; i < CharClass.tableSize; i++) {
-      table.push(!negated);
+      table.push(negated);
     }
     
     for (let char of chars as string) {
@@ -36,7 +36,7 @@ export class CharClass {
         throw new Error(`Cannot include char ${char} in CharClass. CharCode too high.`);
       }
       
-      table[char.charCodeAt(0)] = negated;
+      table[char.charCodeAt(0)] = !negated;
     }
     
     this.charTable = table as any as FixedLengthArray<boolean, typeof CharClass.tableSize>;
@@ -75,6 +75,10 @@ export class Or<Node extends AstNode<Node>> {
   }
 }
 
+export class Not<Node extends AstNode<Node>> {
+  constructor(public expr: Expr<Node>) {}
+}
+
 export class Maybe<Node extends AstNode<Node>> {
   constructor(public expr: Expr<Node>) {}
 }
@@ -97,5 +101,19 @@ export class Match<Node extends AstNode<Node>, Matched extends AstNode<Matched>>
   ) {}
 }
 
-export type Expr<Node extends AstNode<Node>> =
-  (CharClass | Before<Node> | After<Node> | And<Node> | Or<Node> | Maybe<Node> | Repeat<Node> | Match<Node, any>)[];
+export class Equals<Node extends AstNode<Node>> {
+  constructor(public prop: keyof Node, public value: number | Expr<Node>) {}
+}
+
+export type Expr<Node extends AstNode<Node>> = (
+    CharClass
+  | Before<Node>
+  | After<Node>
+  | And<Node>
+  | Or<Node>
+  | Not<Node>
+  | Maybe<Node>
+  | Repeat<Node>
+  | Match<Node, any>
+  | Equals<Node>
+)[];
