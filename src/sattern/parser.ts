@@ -1,102 +1,45 @@
 /*
   Produces an AST. Accepts satterns with the restriction that Not, Before and
   After only accept an extended regular satterns that do not contain submatches.
-  
+
   A sattern is extended regular iff for all its rules R, every expression of that
   rule is either the last one or cannot derive R (ie. there is no recursion,
   except possibly for the last expresion).
+  
+  TODO stabilise the vocabulary. In particular expression, expressionComponent.
 */
-import { Symbol, CharClass } from ".";
-import { FixedLengthArray } from "../typeUtils";
+import { Symbol } from '.';
 
 
-// Fixed length equal to `CharClass.tableSize + 1`.
-type NdTransition = number[];
+export enum TableStateType {
+  read,
+  reduce,
+}
 
-/**
-  Represents a non-deterministic finite state automaton. Starting state has
-  index 0.
-**/
-class NdFsa {
+export type Read = { type: TableStateType.read, state: number };
+export type Reduce = { type: TableStateType.reduce, rule: number };
+
+export type Table = Map<string | number, Read | Reduce>[];
+
+export class Parser<T extends Symbol> {
+  table: Table;
+  
   constructor(
-    public states: NdTransition[],
-    public accepting: Set<number>,
+    public startingSymbols: Set<T>,
+    // The type is correct. The table is imported from a `.json` file, and the
+    // filesystem can contain anything,
+    table?: any,
   ) {
-    for (let stateIndex of accepting) {
-      if (stateIndex >= states.length) {
-        throw new Error(`StateIndex: ${stateIndex}, length: ${states.length}`);
-      }
-    }
-  }
-  
-  negate() {
-    const accepting = new Set<number>();
-    
-    for (let i = 0; i < this.states.length; i++) {
-      this.accepting.has(i) || accepting.add(i);
+    if (arguments.length === 2) {
+      if (!Array.isArray(table)) throw new Error(`Table must be an array, instead found ${table}`);
     }
     
-    return new NdFsa(this.states, accepting);
-  }
-  
-  // Produce an equivalent Fsa.
-  determinize(): { fsa: Fsa } {
-    // Map from states of the fsa to $2^{this.states}$.
-    const states: { ndStates: Set<number>, transitions: number[] | null }[] = [
-      { ndStates: new Set([ 0 ]), transitions: null },
-    ];
+    this.table = table;
     
-    for (let statesIndex = 0; statesIndex < states.length; statesIndex++) {
-      
-    }
-    
-    return new Fsa(states.reduce);
+    // TODO: this.validateTable();
   }
-}
 
-// Determinized ndfsa without epsilon steps.
-class Fsa {
-  constructor(
-    public states: { ndStates }[],
-    public accepting: Set<number>,
-  ) {
-    for (let stateIndex of accepting) {
-      if (stateIndex >= states.length) {
-        throw new Error(`StateIndex: ${stateIndex}, length: ${states.length}`);
-      }
-    }
-  }
-}
-
-/**
-  Create a Fsa from which it is possible to find out whether a word $w$ equals
-  $u . v$ for some $u$, $v$ such that $v$ matches a ndfsa from `nfdsas` (And
-  know which one).
-**/
-function combineFsas(ndfsas: NdFsa[]) {
-  
-}
-
-// Represents one state of a deterministic finite state automaton.
-class FsaState {
-  constructor(public fsa: Fsa, public currentState: number) {}
-  
-  step(char: string) {
-    const nextStates = ;
-    
-    return new FsaState(this.fsa, nextStates);
-  }
-}
-
-// Produces an AST.
-export class Parser {
-  table: num[] = [];
-  
-  constructor(symbols: Set<Symbol>) {
-    // TODO
-  }
-  
-  parse<S extends Symbol>(str: string, symbol: S): InstanceType<S> {
-    // TODO
+  parse<S extends (new(...args: any) => InstanceType<S>) & T>(str: string, symbol: S): InstanceType<S> {
+    // TODO.
   }
 }

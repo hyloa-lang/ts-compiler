@@ -1,10 +1,9 @@
-import { Class } from '../typeUtils';
 import { AstNode } from './patterns';
 
 export * from './patterns';
+export { Parser, Table } from './parser';
+export { AstNodeExtra } from './table-generator';
 
-export { Parser } from './parser';
+export type ANode = AstNode<ANode>;
 
-type ANode = AstNode<ANode>;
-
-export type Symbol = Class<ANode>;
+export type Symbol = typeof AstNode & (new(...args:any) => ANode);

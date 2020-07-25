@@ -4,6 +4,7 @@
     "downlevelIteration": true,
     "lib": [ "es6" ],
     "newLine": "lf",
+    "moduleResolution": "node",
     "noImplicitThis": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -14,5 +15,6 @@
     "rootDir": "src",
     "sourceMap": true,
     "strict": true,
+    "target": "ES2016",
   },
 }

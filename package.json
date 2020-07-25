@@ -7,9 +7,10 @@
   ],
   "main": "out/main.js",
   "scripts": {
-    "build": "rm -r ./out \n tsc",
+    "build": "rm -r ./out \n tsc \n find ./out/ -depth -name \"*.js\" -exec sh -c 'mv \"$1\" \"${1%.js}.mjs\"' _ {} \\; \n find ./out/ -depth -name \"*.js.map\" -exec sh -c 'mv \"$1\" \"${1%.js.map}.mjs.map\"' _ {} \\;",
+    "run": "node ./out/main.js",
     "tables": "node --max_old_space_size=6144 ./out/parser-table-generator.js",
-    "run": "node ./out/main.js"
+    "test": "jest"
   },
   "repository": {
     "type": "git",
@@ -21,7 +22,14 @@
   },
   "homepage": "https://github.com/chalk-lang/ts-compiler#readme",
   "devDependencies": {
-    "@types/node": "^12.7.11"
+    "@types/jest": "^26.0.7",
+    "@types/node": "^12.7.11",
+    "jest": "^26.1.0",
+    "typescript": "^3.9.7"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "jest": {
+    "rootDir": "out"
+  },
+  "type": "module"
 }
