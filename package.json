@@ -7,10 +7,10 @@
   ],
   "main": "out/main.js",
   "scripts": {
-    "build": "rm -r ./out \n tsc \n find ./out/ -depth -name \"*.js\" -exec sh -c 'mv \"$1\" \"${1%.js}.mjs\"' _ {} \\; \n find ./out/ -depth -name \"*.js.map\" -exec sh -c 'mv \"$1\" \"${1%.js.map}.mjs.map\"' _ {} \\;",
+    "build": "rm -r ./out \n tsc",
     "run": "node ./out/main.js",
     "tables": "node --max_old_space_size=6144 ./out/parser-table-generator.js",
-    "test": "jest"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "repository": {
     "type": "git",
@@ -29,7 +29,8 @@
   },
   "dependencies": {},
   "jest": {
-    "rootDir": "out"
+    "rootDir": "out/",
+    "testEnvironment": "jest-environment-node"
   },
   "type": "module"
 }

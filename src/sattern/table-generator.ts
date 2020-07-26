@@ -98,5 +98,3 @@ export function generateParserTables(startingSymbols: Set<Symbol>) {
   
   createMainFsa();
 }
-
-TODO test, then commit this before going further.
