@@ -5,7 +5,7 @@ import { assertNever } from '../typeUtils';
 // Er = extended regular.
 export class AstNodeExtra {
   mustBeEr = false;
-  usedNonLastNonErSymbols = new Set<Symbol>();
+  usedNonErNonLastSymbols = new Set<Symbol>();
   usedBy = new Set<Symbol>();
   visited = false;
 }
@@ -52,7 +52,7 @@ export function computeAllAndUsedSymbols(
           subexpr.match.extra.usedBy.add(symbol);
 
           isBana && (subexpr.match.extra.mustBeEr = true);
-          isLast || symbol.extra.usedNonLastNonErSymbols.add(subexpr.match);
+          isLast || symbol.extra.usedNonErNonLastSymbols.add(subexpr.match);
           
           computeAllAndUsedSymbols(allSymbols, subexpr.match);
         }
@@ -65,24 +65,32 @@ export function computeAllAndUsedSymbols(
 }
 
 function determineErSymbols(allSymbols: Symbol[]): void {
-  const erSymbols = allSymbols.filter(symbol => symbol.extra.usedNonLastNonErSymbols.size === 0);
+  const erSymbols = allSymbols.filter(symbol => symbol.extra.usedNonErNonLastSymbols.size === 0);
   
   for (let erSymbol of erSymbols) {
     for (let symbol of erSymbol.extra.usedBy) {
-      symbol.extra.usedNonLastNonErSymbols.delete(erSymbol);
+      symbol.extra.usedNonErNonLastSymbols.delete(erSymbol);
       
-      symbol.extra.usedNonLastNonErSymbols.size === 0 && erSymbols.push(symbol);
+      symbol.extra.usedNonErNonLastSymbols.size === 0 && erSymbols.push(symbol);
     }
   }
 }
 
 function checkErSymbols(allSymbols: Symbol[]) {
-  for (let symbol of allSymbols) {
-    if (symbol.extra.mustBeEr && symbol.extra.usedNonLastNonErSymbols.size > 0) {
+  const nonErSymbols = allSymbols.filter(symbol => symbol.extra.usedNonErNonLastSymbols.size > 0);
+  
+  for (let symbol of nonErSymbols) {
+    if (symbol.extra.visited) continue;
+    
+    if (symbol.extra.mustBeEr) {
       console.log(`Symbol ${symbol.name} is not extended regular, but has to be.`);
       
       throw symbol;
     }
+    
+    symbol.extra.visited = true;
+    
+    symbol.extra.usedBy.forEach(s => !s.extra.visited && nonErSymbols.push(s));
   }
 }
 
@@ -96,5 +104,7 @@ export function generateParserTables(startingSymbols: Set<Symbol>) {
   determineErSymbols(allSymbols);
   checkErSymbols(allSymbols);
   
-  createMainFsa();
+  
+  
+  createBackgroundFsa();
 }

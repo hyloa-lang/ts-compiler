@@ -8,7 +8,7 @@
   
   TODO stabilise the vocabulary. In particular expression, expressionComponent.
 */
-import { Symbol } from '.';
+import { Symbol, generateParserTables } from '.';
 
 
 export enum TableStateType {
@@ -32,11 +32,11 @@ export class Parser<T extends Symbol> {
   ) {
     if (arguments.length === 2) {
       if (!Array.isArray(table)) throw new Error(`Table must be an array, instead found ${table}`);
+      
+      // TODO: validate tables.
     }
     
-    this.table = table;
-    
-    // TODO: this.validateTable();
+    this.table = table || generateParserTables(startingSymbols);
   }
 
   parse<S extends (new(...args: any) => InstanceType<S>) & T>(str: string, symbol: S): InstanceType<S> {

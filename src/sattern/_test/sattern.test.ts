@@ -25,8 +25,8 @@ test('TC0 - TC2: isolated symbols, nested lookaheads', () => {
   expect(TC0.extra.usedBy).toEqual(new Set());
   expect(TC1.extra.usedBy).toEqual(new Set());
   
-  expect(TC0.extra.usedNonLastNonErSymbols).toEqual(new Set());
-  expect(TC1.extra.usedNonLastNonErSymbols).toEqual(new Set());
+  expect(TC0.extra.usedNonErNonLastSymbols).toEqual(new Set());
+  expect(TC1.extra.usedNonErNonLastSymbols).toEqual(new Set());
   
   expect(parser.parse('aa', TC0)).not.toEqual(null);
   expect(parser.parse('aa', TC1)).toEqual(null);
@@ -59,15 +59,15 @@ test('TC2 - TC6', () => {
   
   expect(TC2.extra.mustBeEr).toEqual(false);
   expect(TC2.extra.usedBy).toEqual(new Set());
-  expect(TC2.extra.usedNonLastNonErSymbols).toEqual(new Set());
+  expect(TC2.extra.usedNonErNonLastSymbols).toEqual(new Set());
   
   expect(TC3.extra.mustBeEr).toEqual(false);
   expect(TC3.extra.usedBy).toEqual(new Set([ TC4, TC2 ]));
-  expect(TC3.extra.usedNonLastNonErSymbols).toEqual(new Set([ TC0 ]));
+  expect(TC3.extra.usedNonErNonLastSymbols).toEqual(new Set([ TC0 ]));
   
   expect(TC5.extra.mustBeEr).toEqual(false);
   expect(TC5.extra.usedBy).toEqual(new Set([ TC2, TC5 ]));
-  expect(TC5.extra.usedNonLastNonErSymbols).toEqual(new Set([]));
+  expect(TC5.extra.usedNonErNonLastSymbols).toEqual(new Set([]));
 })
 
 tmpFuckJs = new Equals(TC0);
@@ -93,13 +93,13 @@ test('TC6 - TC9', () => {
   
   expect(TC6.extra.mustBeEr).toEqual(false);
   expect(TC6.extra.usedBy).toEqual(new Set([ TC7 ]));
-  expect(TC6.extra.usedNonLastNonErSymbols).toEqual(new Set([ TC7 ]));
+  expect(TC6.extra.usedNonErNonLastSymbols).toEqual(new Set([ TC7 ]));
   
   expect(TC7.extra.mustBeEr).toEqual(false);
   expect(TC7.extra.usedBy).toEqual(new Set([ TC6 ]));
-  expect(TC7.extra.usedNonLastNonErSymbols).toEqual(new Set([ TC7 ]));
+  expect(TC7.extra.usedNonErNonLastSymbols).toEqual(new Set([ TC7 ]));
   
   expect(TC8.extra.mustBeEr).toEqual(true);
   expect(TC8.extra.usedBy).toEqual(new Set([ TC7 ]));
-  expect(TC8.extra.usedNonLastNonErSymbols).toEqual(new Set());
+  expect(TC8.extra.usedNonErNonLastSymbols).toEqual(new Set());
 })
