@@ -1,4 +1,4 @@
-import { AstNode, Expr, Match, Or } from '../sattern';
+import { AstNode, Pattern, Match, Or, Caten } from '../sattern';
 
 import { SinglelineComment } from './singlelineComment';
 import { MultilineComment } from './multilineComment';
@@ -7,10 +7,10 @@ import { MultilineComment } from './multilineComment';
 export class Comment extends AstNode<Comment> {
   comment: SinglelineComment|MultilineComment;
   
-  static rule: Expr<Comment> = [
+  static rule: Pattern<Comment> = new Caten(
     new Or(
-      [ new Match(SinglelineComment, "comment") ],
-      [ new Match(MultilineComment, "comment") ],
+      new Caten( new Match(SinglelineComment, "comment") ),
+      new Caten( new Match(MultilineComment, "comment") ),
     ),
-  ];
+  );
 }

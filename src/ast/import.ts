@@ -1,4 +1,4 @@
-import { AstNode, Expr, Match, Or } from '../sattern';
+import { AstNode, Pattern, Match, Or, Text } from '../sattern';
 import { space } from '../astUtils';
 
 export class Import {
@@ -6,14 +6,14 @@ export class Import {
   path: StringLiteral;
   
   static rule = [
-    Text('import'),
+    new Text('import'),
     space,
-    Match(ValueStruct, This.value, { restricted: true }),
+    new Match(ValueStruct, "value", { restricted: true }),
     space,
-    Text('from'),
+    new Text('from'),
     space,
-    Match(StringLiteral, This.path, { singleQuotes: true }),
+    new Match(StringLiteral, "path", { singleQuotes: true }),
     space,
-    Text(";"),
+    new Text(";"),
   ],
 }

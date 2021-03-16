@@ -26,8 +26,6 @@ export class Parser<T extends Symbol> {
   
   constructor(
     public startingSymbols: Set<T>,
-    // The type is correct. The table is imported from a `.json` file, and the
-    // filesystem can contain anything,
     table?: any,
   ) {
     if (arguments.length === 2) {

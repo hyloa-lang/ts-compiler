@@ -1,4 +1,4 @@
-import { AstNode, Expr, Match, Maybe, Repeat } from '../sattern';
+import { AstNode, Pattern, Caten, Maybe, Repeat } from '../sattern';
 import { space } from '../astUtils';
 
 import { Comment } from './comment';
@@ -11,13 +11,13 @@ export class ChalkScriptModule extends AstNode<ChalkScriptModule> {
   imports!: Import[];
   defs!: Expressions;
   
-  static rule: Expr<ChalkScriptModule> = [
-    new Maybe([ space, new Match(Comment, "moduleDoc") ]),
+  static rule: Pattern<ChalkScriptModule> = new Caten(
+    new Maybe( new Caten( space, new Match( Comment, "moduleDoc" ) ) ),
     space,
     new Repeat(
-      [ new Match(Import, "imports"), space ],
+      new Caten( new Match( Import, "imports" ), space ),
     ),
     new Match(Expressions, "defs", { moduleTop: true }),
     space,
-  ];
+  );
 }

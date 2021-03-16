@@ -1,4 +1,4 @@
-import { After, AstNode, And, Before, CharClass, Expr, Match, Maybe, Or, Repeat } from '../sattern';
+import { After, AstNode, And, Before, Chars, Pattern, Match, Maybe, Or, Repeat } from '../sattern';
 import { space } from '../astUtils';
 
 export class Ccl extends AstNode<Ccl> {
@@ -8,7 +8,7 @@ export class Ccl extends AstNode<Ccl> {
     
   };
   
-  static rule: Expr<Ccl> = [
+  static rule: Pattern<Ccl> = [
     
   ];
 }

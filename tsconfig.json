@@ -2,7 +2,7 @@
   "compileOnSave": true,
   "compilerOptions": {
     "downlevelIteration": true,
-    "lib": [ "es6" ],
+    "lib": [ "es2020" ],
     "newLine": "lf",
     "moduleResolution": "node",
     "noImplicitThis": true,
