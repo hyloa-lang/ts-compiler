@@ -1,6 +1,6 @@
-import { Parser, AstNode, Text, After, Pattern, Before, Equals, Or } from '..';
+import { Parser, SyntaxTreeNode, Text, After, Pattern, Before, Match, Or } from '..';
 
-class TC0 extends AstNode<TC0> {
+class TC0 extends SyntaxTreeNode<TC0> {
   static rule: Pattern<TC0> = [
     new Text('a'),
     new After([ new Text('a'), new Before([ new Text('aa') ]) ]),
@@ -8,7 +8,7 @@ class TC0 extends AstNode<TC0> {
   ];
 }
 
-class TC1 extends AstNode<TC0> {
+class TC1 extends SyntaxTreeNode<TC0> {
   static rule: Pattern<TC0> = [
     new Text('a'),
     new After([ new Text('a'), new Before([ new Text('ba') ]) ]),
@@ -35,23 +35,23 @@ test('TC0 - TC2: isolated symbols, nested lookaheads', () => {
   expect(parser.parse('ab', TC1)).toEqual(null);
 });
 
-let tmpFuckJs = new Equals(TC0);
-class TC3 extends AstNode<TC3> {
+let tmpFuckJs = new Match(TC0);
+class TC3 extends SyntaxTreeNode<TC3> {
   static rule: Pattern<TC3> = [ new Text('a'), tmpFuckJs, new Text('a') ];
 }
 
-class TC4 extends AstNode<TC3> {
-  static rule: Pattern<TC4> = [ new Text('a'), new Equals(TC3), new Text('a') ];
+class TC4 extends SyntaxTreeNode<TC3> {
+  static rule: Pattern<TC4> = [ new Text('a'), new Match(TC3), new Text('a') ];
 }
 
 tmpFuckJs.match = TC4;
 
-class TC5 extends AstNode<TC5> {
-  static rule: Pattern<TC5> = [ new Or([ new Text('a')], [ new Equals(TC5) ]) ];
+class TC5 extends SyntaxTreeNode<TC5> {
+  static rule: Pattern<TC5> = [ new Or([ new Text('a')], [ new Match(TC5) ]) ];
 }
 
-class TC2 extends AstNode<TC2> {
-  static rule: Pattern<TC2> = [ new Equals(TC5), new Equals(TC3) ];
+class TC2 extends SyntaxTreeNode<TC2> {
+  static rule: Pattern<TC2> = [ new Match(TC5), new Match(TC3) ];
 }
 
 test('TC2 - TC6', () => {
@@ -70,20 +70,20 @@ test('TC2 - TC6', () => {
   expect(TC5.extra.usedNonErNonLastSymbols).toEqual(new Set([]));
 })
 
-tmpFuckJs = new Equals(TC0);
-class TC6 extends AstNode<TC3> {
+tmpFuckJs = new Match(TC0);
+class TC6 extends SyntaxTreeNode<TC3> {
   static rule: Pattern<TC6> = [ new Text('a'), tmpFuckJs, new Text('a') ];
 }
 
-let fuckJsTC8 = new Equals(TC0);
-class TC7 extends AstNode<TC3> {
-  static rule: Pattern<TC7> = [ new Text('a'), new Equals(TC6), new Text('a'), new After([ fuckJsTC8 ]) ];
+let fuckJsTC8 = new Match(TC0);
+class TC7 extends SyntaxTreeNode<TC3> {
+  static rule: Pattern<TC7> = [ new Text('a'), new Match(TC6), new Text('a'), new After([ fuckJsTC8 ]) ];
 }
 
 tmpFuckJs.match = TC7;
 
-class TC8 extends AstNode<TC5> {
-  static rule: Pattern<TC8> = [ new Or([ new Text('a')], [ new Equals(TC6) ]) ];
+class TC8 extends SyntaxTreeNode<TC5> {
+  static rule: Pattern<TC8> = [ new Or([ new Text('a')], [ new Match(TC6) ]) ];
 }
 
 fuckJsTC8.match = TC8;

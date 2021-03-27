@@ -1,23 +1,25 @@
-import { AstNode, Pattern, Caten, Maybe, Repeat } from '../sattern';
-import { space } from '../astUtils';
+import { SyntaxTreeNode, Pattern, Caten, Maybe, Repeat, Match } from '../sattern/index.js';
+import { space } from '../astUtils.js';
 
-import { Comment } from './comment';
-import { Import } from './import';
-import { Expressions } from './expressions';
+import { Comment } from './comment.js';
+import { Import } from './import.js';
+import { Expressions } from './expressions.js';
 
 
-export class ChalkScriptModule extends AstNode<ChalkScriptModule> {
+export class ChalkScriptModule extends SyntaxTreeNode<ChalkScriptModule> {
   moduleDoc: Comment | null = null;
   imports!: Import[];
   defs!: Expressions;
   
+  static constraintKeys: string[] = [];
+  
   static rule: Pattern<ChalkScriptModule> = new Caten(
-    new Maybe( new Caten( space, new Match( Comment, "moduleDoc" ) ) ),
+    new Maybe( new Caten( space, new Match( false, Comment, "moduleDoc" ) ) ),
     space,
     new Repeat(
-      new Caten( new Match( Import, "imports" ), space ),
+      new Caten( new Match( true, Import, "imports" ), space ),
     ),
-    new Match(Expressions, "defs", { moduleTop: true }),
+    new Match( true, Expressions, "defs", { moduleTop: true } ),
     space,
   );
 }

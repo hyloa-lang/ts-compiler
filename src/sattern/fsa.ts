@@ -1,53 +1,23 @@
-import { ANode, Pattern, Symbol, Chars, After, Before, Not } from '.';
+// This was a 5-minute long attempt to try to get rid of nested states.
+// It is relatively easily doable, and would likely make a few things easier,
+// but I'm not sure that it's worth the effort now that the nested version is
+// mostly already done (hopefully).
+
+import { SNode, Pattern, Symbol, Chars, After, Before, Not } from './index.js';
 
 
-// TODO ckeck all AndState instantiations for whether expansion should follow.
-// TODO make sure all created reachable orstates are added to states array
-//   and there are no duplicates.
-// TODO make sure cover is not used instead of state.
-// TODO am I passing lookarounds everywhere I should in next and expand?
-// TODO make sure lookarounds are passed in expand, not in next.
-// TODO perhaps make a copy of every lookahead inside a lookbehind, and keep
-//   lookbehinds in the main orstate afterall.
-// TODO lookbehinds cannot hand over control to another symbol - copy all symbols
-//   beware recursion - it should be handleable somehow, but looks like a special case.
-// FUCK lookaheads in lookbehinds. And FUCK recursive lookbehinds. FUCK this
-//   I've had enough. I spent more than a month on this stupid shit. I'll make
-//   it less general and FUCK I hate all the special cases that are there.
-
-const alphabet = (() => {
-  const alphabet: string[] = [];
-  
-  for (let n = 0; n < 128; n++) {
-    alphabet.push(Chars.getChar(n));
-  }
-  
-  return alphabet;
-})();
-
-type Letter = string | Before<ANode> | After<ANode>;
-
-function getTopState() {
-  const top = new NdMultiState(null as any, null, true);
-  
-  top.cover = top;
-  
-  return top;
-};
+type Letter = string | Before<SNode> | After<SNode>;
 
 export class NdMultiFsa {
-  top = getTopState();
-  
-  afters = new Map<Before<ANode>, Set<After<ANode>>>();
+  afters = new Map<Before<SNode>, Set<After<SNode>>>();
   
   constructor(
     public alphabet: Letter[],
-    // Lookarounds are wrapped in their own state, symbols are not.
-    public initial = new Map<Symbol | Before<ANode> | After<ANode>, NdMultiState>(),
+    public initial = new Map<Symbol | Before<SNode> | After<SNode> | null, NdMultiState>(),
   ) {}
   
-  copy(init: Symbol, newTop: NdMultiState, exclude: Symbol): NdMultiState {
-    const map = new Map<NdMultiState, NdMultiState>([ [ this.top, newTop ] ]);
+  copy(init: Symbol, exclude: Symbol): NdMultiState {
+    const map = new Map<NdMultiState, NdMultiState>();
     
     const initCopy = this.initial.get(init)!.copy(map);
     
@@ -56,29 +26,26 @@ export class NdMultiFsa {
     return initCopy;
   }
   
-  befores(): Before<ANode>[] {
-    return this.alphabet.filter(l => l instanceof Before) as Before<ANode>[];
+  befores(): Before<SNode>[] {
+    return this.alphabet.filter(l => l instanceof Before) as Before<SNode>[];
   }
   
   toSimpleFsa(): Fsa {
-    const befores = new Map<Before<ANode>, OrState>();
-    const initMain = new OrState([ new AndState(this.top) ]);
-    const initState = new Configuration(this, befores, initMain);
-    
-    for (const before of this.befores()) {
-      initState.befores!.set(
-        before, new OrState([ new AndState(this.initial.get(before)!) ]));
-    }
-    
-    // TODO setup the initial state properly.
-    initState.clearBefores();
-    initState.main.expand(initState.acceptingBefores());
+    const initMain = new OrState([ new AndState(this.initial.get(null)!) ]).expand(this);
+    const initState = new Configuration(this, initMain);
     
     const states = [ initState ];
     
     for (const state of states) {
       for (let under of this.alphabet) {
-        state.next(states, under);
+        const nextNew = state.next(states, under);
+        const nextExisting = states.find(state => Configuration.equals(state, nextNew));
+        
+        if (!nextExisting) {
+          states.push(nextNew);
+        }
+        
+        state.state.transitions.set(under, (nextExisting || nextNew).state);
       }
     }
     
@@ -90,25 +57,18 @@ export class NdMultiFsa {
 export class NdMultiState {
   transitionMap = new Map<string | null, Transition[]>();
   
-  // Transitions of non-accepting inner states out of this state, under null.
-  innerOutTransitions: NdMultiState[][] = [];
-  
-  state = this;
-  
   isAccepting() { return this.isFinal; }
   
   constructor(
-    public cover: NdMultiState,
-    public lookaround: Before<ANode> | After<ANode> | null = null,
     public isFinal = false,
-    // A state can contain other states.
-    public innerInitial: NdMultiState | null = null,
+    public before: Before<SNode> | After<SNode> | null = null,
+    public source: Before<SNode> | After<SNode> | null = null,
   ) {}
   
   copy(map: Map<NdMultiState, NdMultiState>): NdMultiState {
     if (map.has(this)) return map.get(this)!;
     
-    const theCopy = new NdMultiState(null as any, this.lookaround, this.isFinal);
+    const theCopy = new NdMultiState(this.isFinal, this.before, this.source);
     
     map.set(this, theCopy);
     
@@ -118,9 +78,6 @@ export class NdMultiState {
       }
     }
     
-    theCopy.cover = this.cover.copy(map);
-    theCopy.innerInitial = this.innerInitial ? this.innerInitial.copy(map) : null;
-    
     return theCopy;
   }
   
@@ -129,15 +86,7 @@ export class NdMultiState {
   ): OrState {
     const transitions = this.transitionMap.get(under) || [];
     
-    return new OrState(transitions.map(transition => {
-      const lookaround = transition.to.reduce((a: Before<ANode> | After<ANode> | null, c) => {
-        if (a) throw new Error('Multiple lookarounds. This is a programmer error.');
-        
-        return a || c.lookaround;
-      }, null);
-      
-      return new AndState(this.cover, transition.to, lookaround);
-    }));
+    return new OrState(transitions.map(transition => new AndState(transition.to, null)));
   }
 }
 
@@ -177,7 +126,7 @@ class AndState {
   constructor(
     public state: NdMultiState,
     public innerStates: (NdMultiState | AndState)[] = [ state.innerInitial! ],
-    public lookaround: Before<ANode> | After<ANode> | null = null,
+    public lookaround: Before<SNode> | After<SNode> | null = null,
   ) {
     if (innerStates[0] === null) throw new Error('Missing the argument "states". This is a programmer error.');
     
@@ -286,53 +235,89 @@ class OrState {
     return OrState.or(this.states.map(state => state.next(under)));
   }
   
-  // TODO detect when a before is recognized as accepting, and unblock andstates.
+  handleLookaround(
+    fsa: NdMultiFsa,
+    state: AndState,
+    blocked = new Map<Before<SNode>, AndState[]>(),
+    acceptingBefores = new Set<Before<SNode>>(),
+  ) {
+    if (state.lookaround instanceof After) {
+      state.insert(new AndState(fsa.top, [ fsa.initial.get(state.lookaround)! ]));
+      
+      state.lookaround = null;
+    }
+    
+    if (state.lookaround instanceof Before) {
+      const before = state.lookaround;
+      
+      state.lookaround = null;
+      
+      if (!acceptingBefores.has(before)) {
+        blocked.has(before) || blocked.set(before, []);
+        
+        blocked.get(before)!.push(state);
+        
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  unblock(
+    state: AndState,
+    blocked: Map<Before<SNode>, AndState[]>,
+    acceptingBefores = new Set<Before<SNode>>(),
+  ) {
+    for (const s of state.innerStates) {
+      if (s.isFinal && s.state.source instanceof Before) {
+        acceptingBefores.add(s.state.source);
+        
+        if (blocked.has(s.state.source)) {
+          blocked.get(s.state.source)!.forEach(s => this.insert(s));
+          blocked.delete(s.state.source);
+        }
+      }
+    }
+  }
+  
+  // TODO befores should be unblocked anytime a new before is found because
+  // of nested afters that need to be copied into the unblocked andstates.
+  //
+  // Current algorithm should be fine if no before contains an after that
+  // can match beyond the end of the match of the before.
+  //
+  // To implement it properly, it might be a good idea to move this method
+  // to Configuration.
   expand(
     fsa: NdMultiFsa,
-    blocked = new Map<Before<ANode>, AndState[]>(),
-    acceptingBefores: Before<ANode>[] = [],
+    blocked = new Map<Before<SNode>, AndState[]>(),
+    acceptingBefores = new Set<Before<SNode>>(),
     i = 0,
   ): OrState {
     if (this.states.length <= i) return this;
     
     const andState = this.states[i];
     
-    if (andState.lookaround instanceof After) {
-      andState.insert(new AndState(fsa.top, [ fsa.initial.get(andState.lookaround)! ]));
-      
-      andState.lookaround = null;
+    const isBlocked = this.handleLookaround(fsa, andState, blocked, acceptingBefores);
+    
+    if (isBlocked) return this.expand(fsa, blocked, acceptingBefores, i);
+    
+    this.unblock(andState, blocked, acceptingBefores);
+    
+    if (andState.isFinal) {
+      this.insert(andState.state.next(null));
+    } else { // TODO this transition is not optional.
+      andState.state.innerOutTransitions.map(
+        t => this.insert(new AndState(andState.state.cover, t)),
+      );
     }
     
-    if (andState.lookaround instanceof Before) {
-      const before = andState.lookaround;
+    for (const state of andState.innerStates) {
+      const expanded = state instanceof NdMultiState
+        ? state.next(null) : new OrState([ state ]).expand(fsa, blocked, acceptingBefores);
       
-      andState.lookaround = null;
-      
-      if (!acceptingBefores.includes(before)) {
-        blocked.has(before) || blocked.set(before, []);
-        
-        blocked.get(before)!.push(andState);
-        
-        return this.expand(fsa, blocked, acceptingBefores, i);
-      }
-    }
-    
-    if (!andState.lookaround) {
-      for (const state of andState.innerStates) {
-        const expanded = state instanceof NdMultiState
-          ? state.next(null) : new OrState([ state ]).expand(fsa, blocked, acceptingBefores);
-        
-        expanded.states.forEach(s => this.insert(andState.copy(state).and(s)));
-      }
-      
-      if (andState.isFinal) {
-        this.insert(andState.state.next(null));
-        
-      } else {
-        andState.state.innerOutTransitions.map(
-          t => this.insert(new AndState(andState.state.cover, t)),
-        );
-      }
+      expanded.states.forEach(s => this.insert(andState.copy(state).and(s)));
     }
     
     return this.expand(fsa, blocked, acceptingBefores, i + 1);
@@ -344,113 +329,96 @@ class OrState {
   }
 }
 
-type ConfBefores = Map<Before<ANode>, OrState>;
-
 class Configuration {
   state = new Fsa();
   
+  /* Too much work.
   // It would be possible to merge befores into the main orState, but it would
   // create unnecessary duplicities in the configuration.
   befores = new Map<Before<ANode>, OrState>();
+  */
   
   constructor(
     public fsa: NdMultiFsa,
     public main: OrState,
   ) {}
   
-  accepts(before: Before<ANode>) { return this.befores.get(before)!.isFinal; }
+  accepts(fsa: NdMultiFsa, before: Before<SNode>) {
+    const cover = fsa.initial.get(before);
+    
+    return this.main.states.some(state => state.innerStates.find(s => s.state === cover));
+  }
   
+  /*
   getAfters(before: Before<ANode>) {
     const beforeState = this.fsa.initial.get(before);
     const or = this.befores.get(before)!;
     
     return new OrState(or.states.filter(s => s.state !== beforeState));
-  }
+  }*/
   
   next(
     states: Configuration[],
-    under: string | Before<ANode> | After<ANode>,
+    under: string | Before<SNode> | After<SNode>,
   ): Configuration {
-    const blocked = new Map<Before<ANode>, OrState>();
     
     if (under instanceof After) {
-      const after = new OrState(
-        [ new AndState(this.fsa.top, [ this.fsa.initial.get(under)! ]) ]
-      ).expand();
+      const after = new AndState(this.fsa.top, [ this.fsa.initial.get(under)! ]);
       
       return new Configuration(
         this.fsa,
-        this.main.and(after.filter(s => { const b = s.look })), // TODO there might be other ands.
+        this.main.and(after).expand(this.fsa),
       );
     }
     
     if (under instanceof Before) {
-      const underState = this.acceptingBefores.get(under)!;
-      
-      if (this.accepts(under)) {
+      if (this.accepts(this.fsa, under)) {
+        return this;
+        
+        /*/ TODO here, afters of the before should be added. Too much work.
+            See todos elsewhere in this file for more info.
         return new Configuration(
           this.fsa,
           this.main.and(this.getAfters(under)),
         );
+        /*/
       }
       
-      return new Configuration(this.fsa, Configuration.emptyBefores, new OrState([]));
+      return new Configuration(this.fsa, new OrState([]));
     }
     
-    const nextBefores = this.nextBefores();
-    
-    
-    const nextNew = OrState.or(this.states.map(state => state.next(under, befores)));
-    const nextExisting = states.find(state => OrState.equals(state, nextNew));
-    
-    if (!nextExisting) {
-      states.push(nextNew);
-    }
-    
-    this.state.transitions.set(under, (nextExisting || nextNew).state);
-
+    return new Configuration(this.fsa, this.main.next(under).expand(this.fsa));
   }
   
-  nextBefores(): ConfBefores {
-    // TODO
+  static equals(a: Configuration, b: Configuration): boolean {
+    return OrState.equals(a.main, b.main);
   }
-  
-  static clearBefores(befores: ConfBefores) {
-    const acceptingBefores = new Set<Before<ANode>>();
-    
-    let acceptingBeforesSize = -1;
-    
-    while (acceptingBeforesSize < acceptingBefores.size) {
-      acceptingBeforesSize = acceptingBefores.size;
-      
-      for (const [ before, orState ] of befores) {
-        for (const andState of orState.states) {
-          acceptingBefores.forEach(before => andState.lookaround.delete(before));
-          
-          if (andState.lookaround.size === 0) acceptingBefores.add(before);
-        }
-      }
-    }
-    
-  }
-  
-  static equals(a: Configuration, b: Configuration): boolean {}
 }
 
 class Fsa {
   isFinal: boolean = false;
-  transitions = new Map<string | Before<ANode> | After<ANode>, Fsa>();
+  transitions = new Map<string | Before<SNode> | After<SNode>, Fsa>();
 }
 
 function generateFsa(startingSymbols: Set<Symbol>): Fsa {
   const symbols: Symbol[] = [];
-  const lookarounds: (Before<ANode> | After<ANode>)[] = [];
-  const negated: Map<Not<ANode> | Symbol, Pattern<ANode>> = new Map();
+  const lookarounds: (Before<SNode> | After<SNode>)[] = [];
+  const negated: Map<Not<SNode> | Symbol, Pattern<SNode>> = new Map();
   
   for (const symbol of startingSymbols) {
     symbol.preprocess(symbols, lookarounds, negated, false);
   }
   
+  const alphabet = (() => {
+    const alphabet: string[] = [];
+    
+    for (let n = 0; n < 128; n++) {
+      alphabet.push(Chars.getChar(n));
+    }
+    
+    return alphabet;
+  })();
+
   const fsa = new NdMultiFsa(alphabet.concat(lookarounds as any));
   const fsaNull = new NdMultiState(fsa.top, null, true);
   
@@ -460,16 +428,12 @@ function generateFsa(startingSymbols: Set<Symbol>): Fsa {
   for (const lookaround of lookarounds) {
     const initial = new NdMultiState(fsa.top, null);
     
-    new Transition(null, fsaNull, [ fsaNull, initial ]);
-    
     lookaround.toFsa(fsa, [ initial ]);
+    fsa.initial.set(lookaround, initial);
+    
+    lookaround instanceof Before &&
+      new Transition(null, fsaNull, [ fsaNull, initial ]);
   }
   
   return fsa.toSimpleFsa();
-}
-
-export function generateParserTables(startingSymbols: Set<Symbol>) {
-  const fsa = generateFsa(startingSymbols);
-  
-  // TODO LR parser
 }

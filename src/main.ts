@@ -6,9 +6,9 @@
 import { promises } from 'fs';
 import * as Path from 'path';
 
-import { Module, ModuleSymbols } from './module';
-import { ChalkScriptModule, ChalkDocModule } from './ast';
-import { Class } from './typeUtils';
+import { Module, ModuleSymbols } from './module.js';
+import { ChalkScriptModule, ChalkDocModule } from './ast/index.js';
+import { Class } from './typeUtils.js';
 
 const libPattern = /^([a-zA-Z][a-zA-Z0-9\-]*)(?:@(\d+.\d+.\d+))?$/;
 
