@@ -13,15 +13,19 @@
 
 import { promises } from 'fs';
 
-import { Symbol, generateParserTables, Chars, Before, After, SNode, SyntaxTreeNode } from './index.js';
+import { Symbol, generateParserTables, Chars, Before, After, SNode, SyntaxTreeNode, Pattern } from './index.js';
 import { Fsa } from './fsa-nested.js';
-import { getZerothOfRule, ParserStates } from './table-builder.js';
+import { getZerothOfRule, ParserStates, GrammarExplorer } from './table-builder.js';
 
 
-export abstract class Nonterminal {}
+export abstract class Nonterminal {
+  isTop = false;
+}
 
 export class RegularNt extends Nonterminal {
   constructor(
+    // Just for ease of debugging.
+    public source: Pattern<SNode> | Symbol | null,
     public constraints: Record<string, boolean> | null = null,
   ) { super(); }
 }
@@ -46,8 +50,8 @@ function isLookaround(val: unknown): val is Before<SNode> | After<SNode> {
 }
 
 export class GrammarRule {
-  symbolCount(): number {
-    return this.expansion.reduce((a: number, c) => a + (isLookaround(c) ? 1 : 0), 0);
+  takeCount(): number {
+    return this.expansion.reduce((a: number, c) => a + (isLookaround(c) ? 0 : 1), 0);
   }
   
   index: number | null = null;
@@ -63,6 +67,10 @@ export class Context {
     public chars: Chars,
     public canBeEmpty: boolean,
   ) {}
+  
+  toArr(): (string | null)[] {
+    return [ ...this.chars.chars(), ...(this.canBeEmpty ? [ null ] : []) ];
+  }
   
   static equals(a: Context, b : Context): boolean {
     return a.canBeEmpty === b.canBeEmpty && Chars.equals(a.chars, b.chars);
@@ -104,6 +112,7 @@ export class RuleAt {
     );
   }
   
+  // IMPROVEMENT change parserStates back to grammar.
   expand(parserStates: ParserStates, parserState: ParserState) {
     if (this.isAtLookaround()) throw new Error('isAtLookaround');
     
@@ -153,6 +162,7 @@ export class RuleAt {
       && a.rule === b.rule
       && a.dot === b.dot
       && Context.equals(a.follow, b.follow)
+      && a.origFsa === b.origFsa;
     ;
   }
 }
@@ -175,17 +185,35 @@ export class Grammar {
     this.zerothSets.has(rule.nt) ||
       this.zerothSets.set(rule.nt, new Context(new Chars(""), false));
   }
+  
+  prettyPrint() {
+    let ntIndex = 0;
+    
+    for (const nt of this.zerothSets.keys()) nt.index = ntIndex++;
+    
+    for (const nt of this.zerothSets.keys()) {
+      console.log();
+      console.log();
+      console.log(nt.source || null);
+      console.log(nt.index, ': follow', '(' + this.zerothSets.get(nt)!.chars.chars().map(c => c === '\n' ? '\\n' : c).join('') + ')', this.zerothSets.get(nt)!.canBeEmpty);
+      this.rules.forEach(rule => rule.nt === nt && console.log('(' + rule.index + ')', '=>', rule.expansion.map(gs => {
+        if (gs instanceof Before) return 'Before';
+        if (gs instanceof After) return 'After';
+        if (gs instanceof Nonterminal) return 'index' in gs ? gs.index : '(index does not exist)';
+        return '(' + gs.chars().map(c => c === '\n' ? '\\n' : c).join('') + ')';
+      }).join(' ')|| '(empty)'));
+    }
+  }
 }
 
 class ReduceInfo {
   constructor(
     public rule: GrammarRule,
-    public fsaFrom: Fsa,
-    public fsaTo: Fsa,
+    public index: number,
   ) {}
   
-  equal(rule: GrammarRule, fsaFrom: Fsa, fsaTo: Fsa) {
-    return this.rule === rule && this.fsaFrom === fsaFrom && this.fsaTo === fsaTo;
+  equal(rule: GrammarRule, index: number) {
+    return this.rule === rule && this.index === index;
   }
 }
 
@@ -195,13 +223,13 @@ export class ParserTransition {
     public reduce: ReduceInfo[] = [],
   ) {}
   
-  hasReduce(rule: GrammarRule, fsaFrom: Fsa, fsaTo: Fsa) {
-    return this.reduce.some(rInfo => rInfo.equal(rule, fsaFrom, fsaTo));
+  hasReduce(rule: GrammarRule, index: number) {
+    return this.reduce.some(rInfo => rInfo.equal(rule, index));
   }
   
-  insertReduce(rule: GrammarRule, fsaFrom: Fsa, fsaTo: Fsa) {
-    if (!this.hasReduce(rule, fsaFrom, fsaTo)) {
-      this.reduce.push(new ReduceInfo(rule, fsaFrom, fsaTo));
+  insertReduce(rule: GrammarRule, index: number) {
+    if (!this.hasReduce(rule, index)) {
+      this.reduce.push(new ReduceInfo(rule, index));
     }
   }
 }
@@ -209,9 +237,9 @@ export class ParserTransition {
 export class ParserState {
   transitions = new Map<string | null, ParserTransition>();
   // IMPROVEMENT, replace `ParserTransition` with `ParserState`.
-  ntTransitions = new Map<Nonterminal, Map<Fsa, ParserTransition>>();
+  ntTransitions = new Map<number, ParserTransition>();
   
-  ruleAts: RuleAt[];
+  ruleAts: RuleAt[] = [];
   
   constructor(
     ruleAts: RuleAt[],
@@ -232,18 +260,12 @@ export class ParserState {
     return this.transitions.get(under)!;
   }
   
-  retNtTransition(nt: Nonterminal, fsa: Fsa) {
-    if (!this.ntTransitions.has(nt)) {
-      this.ntTransitions.set(nt, new Map());
+  retNtTransition(index: number) {
+    if (!this.ntTransitions.has(index)) {
+      this.ntTransitions.set(index, new ParserTransition());
     }
     
-    const map = this.ntTransitions.get(nt)!;
-    
-    if (!map.has(fsa)) {
-      map.set(fsa, new ParserTransition());
-    }
-    
-    return map.get(fsa)!;
+    return this.ntTransitions.get(index)!;
   }
   
   expand(parserStates: ParserStates, i = 0) {
@@ -254,6 +276,7 @@ export class ParserState {
     this.expand(parserStates, i + 1);
   }
   
+  /* TODO delete
   addNtTransition(
     parserStates: ParserStates,
     nt: Nonterminal,
@@ -275,28 +298,33 @@ export class ParserState {
         transition.shift = parserStates.insert(transition.shift);
       }
     }
-  }
+  }*/
   
   private populateTransitions(parserStates: ParserStates) {
     if (this.transitions.size > 0) throw new Error('transitions already populated');
     
     for (const ruleAt of this.ruleAts) {
-      if (ruleAt.isAtLookaround()) throw new Error('isAtLookaround');
-      
       const at = ruleAt.at();
       
+      if (at instanceof Before || at instanceof After) throw new Error('isAtLookaround');
+      
       if (at === null) {
+        const index = parserStates
+          .explorer
+          .ret(ruleAt.rule.nt, ruleAt.origFsa)
+          .indices.get(ruleAt.fsaState)!;
+        
         // IMPROVEMENT: perhaps Context should be a Set<string | null>.
         if (ruleAt.follow.canBeEmpty) {
           const transition = this.retTransition(null);
           
-          transition.insertReduce(ruleAt.rule, ruleAt.origFsa, ruleAt.fsaState);
+          transition.insertReduce(ruleAt.rule, index);
         }
         
         for (const ch of ruleAt.follow.chars.chars()) {
           const transition = this.retTransition(ch);
           
-          transition.insertReduce(ruleAt.rule, ruleAt.origFsa, ruleAt.fsaState);
+          transition.insertReduce(ruleAt.rule, index);
         }
         
       } else if (at instanceof Chars) {
@@ -305,6 +333,18 @@ export class ParserState {
           
           if (shifted) {
             const transition = this.retTransition(ch);
+            
+            transition.shift || (transition.shift = new ParserState([], parserStates));
+            
+            transition.shift.insert(parserStates, shifted);
+          }
+        }
+      } else {
+        for (const [ fsa, index ] of parserStates.explorer.ret(at, ruleAt.fsaState).indices) {
+          const shifted = ruleAt.shift(fsa);
+          
+          if (shifted) {
+            const transition = this.retNtTransition(index);
             
             transition.shift || (transition.shift = new ParserState([], parserStates));
             
@@ -323,10 +363,6 @@ export class ParserState {
     if (isUnique) {
       this.ruleAts.push(ruleAt);
       
-      const at = ruleAt.at();
-      
-      at instanceof Nonterminal && parserStates.retNtInfo(at, ruleAt.fsaState).insertState(this);
-      
       expand && this.expand(parserStates, this.ruleAts.length - 1);
     }
   }
@@ -338,13 +374,11 @@ export class ParserState {
       if (transition.shift) {
         transition.shift = parserStates.insert(transition.shift);
       }
-      
-      for (const reduceInfo of transition.reduce) {
-        parserStates.createPairIfNonexisting(
-          reduceInfo.rule.nt,
-          reduceInfo.fsaFrom,
-          reduceInfo.fsaTo,
-        );
+    }
+    
+    for (const transition of this.ntTransitions.values()) {
+      if (transition.shift) {
+        transition.shift = parserStates.insert(transition.shift);
       }
     }
   }
@@ -363,26 +397,15 @@ function initialFromJson(initialJson: unknown): Map<Symbol, ParserState> {
 function saveParserState(
   obj: any,
   state: ParserState & { index?: number } | null,
+  explorer: GrammarExplorer,
   ctx: {
     includeDebugInfo: boolean;
     stateCount: number;
-    pairCount: number;
-    ntFsaPairMap: Map<Nonterminal, Map<Fsa, number>>;
   },
   prop?: string | number,
 ) {
   if (state === null) return null;
   if ('index' in state) return state;
-  
-  function retNt(nt: Nonterminal, fsa: Fsa) {
-    ctx.ntFsaPairMap.has(nt) || ctx.ntFsaPairMap.set(nt, new Map());
-    
-    const map = ctx.ntFsaPairMap.get(nt)!;
-    
-    map.has(fsa) || map.set(fsa, ctx.pairCount++);
-    
-    return map.get(fsa)!;
-  }
   
   state.index = ctx.stateCount++;
   prop || (prop = state.index);
@@ -390,39 +413,36 @@ function saveParserState(
   const stateJsonObj = obj[prop] = {
     index: state.index,
     transitions: {} as any,
+    ntTransitions: {} as any,
   };
   
   for (const [ under, transition ] of state.transitions) {
     stateJsonObj.transitions[under || ''] = {
-      shift: saveParserState(obj, transition.shift, ctx)?.index || null,
-      reduce: transition.reduce.map(reduceInfo => retNt(reduceInfo.rule.nt, reduceInfo.fsaTo)),
+      shift: saveParserState(obj, transition.shift, explorer, ctx)?.index || null,
+      reduce: transition.reduce.map(reduceInfo => ({ ruleIndex: reduceInfo.rule.index, ntIndex: reduceInfo.index })),
     }
   }
   
-  for (const [ nt, map ] of state.ntTransitions) {
-    for (const [ fsa, transition ] of map) {
-      stateJsonObj.transitions[retNt(nt, fsa)] = {
-        shift: saveParserState(obj, transition.shift, ctx)?.index || null,
-        reduce: [],
-      }
+  for (const [ ntIndex, transition ] of state.ntTransitions) {
+    stateJsonObj.ntTransitions[ntIndex] = {
+      shift: saveParserState(obj, transition.shift, explorer, ctx)?.index || null,
+      reduce: [],
     }
   }
   
   return stateJsonObj;
 }
 
-async function saveToJson(initial: Map<Symbol, ParserState>) {
+async function saveToJson(initial: Map<Symbol, ParserState>, explorer: GrammarExplorer) {
   const ctx = {
     includeDebugInfo: false, // IMPROVEMENT implement this.
     stateCount: 0,
-    pairCount: 0,
-    ntFsaPairMap: new Map<Nonterminal, Map<Fsa, number>>(),
   };
   
   const obj: Record<string, any> = {};
   
   for (const [ symbol, state ] of initial) {
-    saveParserState(obj, state, ctx, symbol.name);
+    saveParserState(obj, state, explorer, ctx, symbol.name);
   }
   
   console.log('Number of parser states: ', ctx.stateCount);
@@ -443,8 +463,9 @@ class ParseHead {
     public value: ParseHeadValue,
     public state: ParserState,
     public previous: ParseHead | null,
-    public start: number,
-    public end: number,
+    public wordIndex: number,
+    // How many heads back value did change.
+    public lastValueChangeIndex: number,
   ) {
     if (!state) throw new Error('programmer error');
   }
@@ -452,14 +473,14 @@ class ParseHead {
   shift(word: string, char: string): ParseHead | null {
     const transition = this.state.transitions.get(char);
     
-    if (!transition) return null;
+    if (!transition || !transition.shift) return null;
     
     return new ParseHead(
       {},
-      transition.shift!,
+      transition.shift,
       this,
-      this.end,
-      this.end + 1,
+      this.wordIndex + 1,
+      this.lastValueChangeIndex + 1,
     );
   }
   
@@ -469,23 +490,31 @@ class ParseHead {
     char: string | null,
     progressPtr: { value: boolean } | null = null,
   ): ParseHead[] {
-    if (!this.reduced) return [ this ];
+    if (this.reduced) return [ this ];
     
     this.reduced = true;
     
-    const transition = this.state.transitions.get(char)!;
+    const transition = this.state.transitions.get(char);
     
-    0 < transition.reduce.length && setProgress(progressPtr, true);
+    if (!transition) return [];
     
     const nextHeads = transition.reduce.map(reduceInfo => {
-      const symbolCount = reduceInfo.rule.symbolCount();
+      if (reduceInfo.rule.nt.isTop) return this;
+      
+      setProgress(progressPtr, true);
+      
+      const symbolCount = reduceInfo.rule.takeCount();
       
       function mergeValues(head: ParseHead, count: number): [ ParseHead, ParseHeadValue ] {
-        if (count === 0) return [ head, Object.assign({}, head.value) ];
+        if (count === 0) return [ head, {} ];
         
         const [ prevHead, value ] = mergeValues(head.previous!, count - 1);
         
+        let hasKeys = false;
+        
         for (const key of Object.keys(head.value)) {
+          hasKeys = true;
+          
           value[key] = key in value
             ? [ ...(value[key] as any), head.value[key] ] : head.value[key];
         }
@@ -493,7 +522,7 @@ class ParseHead {
         return [ prevHead, value ];
       };
       
-      const [ prevHead, value ] = mergeValues(this, symbolCount);
+      let [ prevHead, value ] = mergeValues(this, symbolCount); // asdf
       
       if (reduceInfo.rule.nt instanceof MatchNt) {
         let toInsert;
@@ -507,9 +536,9 @@ class ParseHead {
           );
           
           toInsert = symbolInstance;
-          value[reduceInfo.rule.nt.prop] = symbolInstance;
+          value = {};
         } else {
-          toInsert = word.substring(prevHead.start, this.end);
+          toInsert = word.substring(prevHead.wordIndex, this.wordIndex);
         }
         
         if (reduceInfo.rule.nt.isArray) {
@@ -521,12 +550,15 @@ class ParseHead {
         }
       }
       
+      const valueChanged = reduceInfo.rule.nt instanceof MatchNt
+        || this.lastValueChangeIndex < symbolCount;
+      
       return new ParseHead(
         value,
-        prevHead.state.retNtTransition(reduceInfo.rule.nt, reduceInfo.fsaTo).shift!,
+        prevHead.state.retNtTransition(reduceInfo.index).shift!,
         prevHead,
-        prevHead.start,
-        this.end,
+        this.wordIndex,
+        valueChanged ? 0 : prevHead.lastValueChangeIndex + 1,
       );
     });
     
@@ -548,29 +580,52 @@ export class Parser<T extends Symbol> {
     if (initial) {
       this.initial = initialFromJson(initial);
     } else {
-      this.initial = generateParserTables(startingSymbols);
+      //generateParserTables(startingSymbols).then(([ initial, explorer ]) => {
+      const [ initial, explorer ] = generateParserTables(startingSymbols);
       
-      saveToJson(this.initial);
+      saveToJson(initial, explorer);
+      
+      this.initial = initial;
     }
   }
   
   // TODO in case of no match, some kind of error.
-  //parse<S extends (new(...args: any) => InstanceType<S>) & T>(word: string, symbol: S): InstanceType<S> | null {
-  parse<S extends new(...args: any) => InstanceType<S>>(word: string, symbol: S): InstanceType<S> | null {
+  parse<S extends Symbol>(word: string, symbol: S): InstanceType<S> | number {
     let heads = [ new ParseHead({}, this.initial.get(symbol)!, null, 0, 0) ];
     let i = 0;
     
+    // IMPROVEMENT: calculate whether shifting is allowed in the next round its preceding round.
+    // Currently, there are rounds with canShift false that do not reduce anything.
     const progressPtr = { value: true };
     
     for (; 0 < heads.length && (i < word.length || progressPtr.value);) {
+console.log('here', i);
       const canShift = !progressPtr.value;
       
-      progressPtr.value = false;
+      progressPtr.value = !progressPtr.value;
       
       heads = canShift
         ? heads.map(head => head.shift(word, word[i])!).filter(a => a)
         : heads.flatMap(head => head.reduce(word, word[i] || null, progressPtr))
       ;
+      
+      /* TODO deduplicate heads (if a.state === b.state, and lastValueChangeIndex)
+      for (let i = 0; i < heads.length; i += 1) {
+        for (let j = i + 1; j < heads.length; j += 1) {
+          const [ headA, headB ] = [ heads[i], heads[j] ];
+          
+          if (headA.state === headB.state && headA.previous === headB.previous) {
+            if (headA.lastValueChangeIndex) TODO
+            
+            const replacement = heads.pop();
+            
+            if (j < heads.length) {
+              heads[j] = replacement;
+              j -= 1;
+            }
+          }
+        }
+      }*/
       
       canShift && (i += 1);
     }
@@ -582,6 +637,6 @@ export class Parser<T extends Symbol> {
     
     console.log(heads[0])
     console.log(heads[0].value)
-    return heads[0] ? heads[0].value.root as any : null;
+    return heads[0] ? heads[0].value.root as any : i;
   }
 }

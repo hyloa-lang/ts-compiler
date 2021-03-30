@@ -49,11 +49,11 @@ class CompileError {
   constructor(public message: string, public info?: object) {}
 }
 
-type ProjectOptions = {
-  dependencies: Record<string, DependencyOptions | undefined>;
+type ProjectSettings = {
+  dependencies: Record<string, DependencySettings | undefined>;
 };
 
-type DependencyOptions = {
+type DependencySettings = {
   name: string;
   versions: string[];
   defaultVersion: string | null;
@@ -73,12 +73,12 @@ function throwImport(importing: ModulePath, path: string, reason: string): never
   );
 }
 
-function validateProjectOptions(options: any): ProjectOptions {
-  if (!('dependencies' in options || !Array.isArray(options.dependencies))) {
-    throw new CompileError("TODO options dependencies missing or not array");
+function validateProjectSettings(settings: any): ProjectSettings {
+  if (!('dependencies' in settings || !Array.isArray(settings.dependencies))) {
+    throw new CompileError("TODO dependency settings missing or not array");
   }
   
-  for (let dependency of (Object.values(options.dependencies)) as any) {
+  for (let dependency of (Object.values(settings.dependencies)) as any) {
     if (
       !dependency
         || typeof dependency !== 'object'
@@ -91,17 +91,17 @@ function validateProjectOptions(options: any): ProjectOptions {
     }
   }
   
-  return options;
+  return settings;
 }
 
 // Library is the empty string or "name@version".
-async function loadOptions(projectRoot: string, library: string): Promise<ProjectOptions> {
-  const path = Path.join(projectRoot, library + '/options.json');
+async function loadSettings(projectRoot: string, library: string): Promise<ProjectSettings> {
+  const path = Path.join(projectRoot, library + '/settings.json');
   
   const file = await tryCatchFuckYou(() => promises.readFile(path, 'utf8'));
   
   if (file instanceof Error) {
-    console.log(`Note: Cannot load options from "${path}".`
+    console.log(`Note: Cannot load settings from "${path}".`
       + 'It will not be possible to import libraries. Reasonable defaults will '
       + 'be attempted to be used.');
     
@@ -112,13 +112,13 @@ async function loadOptions(projectRoot: string, library: string): Promise<Projec
   
   if (json === null) {
     if (library === '') {
-      throw new CompileError('Cannot parse options (`/options.json`).');
+      throw new CompileError('Cannot parse settings (`/settings.json`).');
     } else {
-      throw new CompileError(`Cannot parse options of "library ${library}".`);
+      throw new CompileError(`Cannot parse settings of "library ${library}".`);
     }
   }
   
-  return validateProjectOptions(json);
+  return validateProjectSettings(json);
 }
 
 // A normalized path is an absolute path (relative to the root folder of the
@@ -128,7 +128,7 @@ async function loadOptions(projectRoot: string, library: string): Promise<Projec
 // itself, or `"/home/user/projects/asdf/lib/foo@0.4.7/src/foo.chs"` if imported
 // from  the library `foo` at version `0.4.7`.
 function normalizePath(
-  libraries: Record<string, DependencyOptions | undefined>,
+  libraries: Record<string, DependencySettings | undefined>,
   importing: ModulePath,
   imported: string,
 ): ModulePath {
@@ -163,11 +163,11 @@ function normalizePath(
 }
 
 class Main {
-  options: Map<string | null, ProjectOptions> = new Map();
+  settings: Map<string | null, ProjectSettings> = new Map();
   modules: Map<ModulePathString, Module> = new Map();
   
   loadingModules = new Map<string, Promise<unknown>>();
-  loadingOptions = new Map<string, Promise<unknown>>();
+  loadingSettings = new Map<string, Promise<unknown>>();
   
   projectRoot: string;
   
@@ -180,14 +180,16 @@ class Main {
   }
   
   async run(mainPath: string) {
-    this.options.set(null, await loadOptions(this.projectRoot, ''));
+    this.settings.set(null, await loadSettings(this.projectRoot, ''));
     
     await this.loadModule(new ModulePath(null, null, '/'), mainPath);
+    
+    // TODO run
   }
   
   async loadModule(importing: ModulePath, importedPath: string) {
     const modulePath = normalizePath(
-      this.options.get(importing.library)!.dependencies,
+      this.settings.get(importing.library)!.dependencies,
       importing,
       importedPath,
     );
@@ -203,15 +205,15 @@ class Main {
     
     this.loadingModules.set(importedPath, moduleFile);
     
-    if (!this.options.has(modulePath.library)) {
-      if (this.loadingOptions.has(modulePath.library!)) {
-        await this.loadingOptions.get(modulePath.library!);
+    if (!this.settings.has(modulePath.library)) {
+      if (this.loadingSettings.has(modulePath.library!)) {
+        await this.loadingSettings.get(modulePath.library!);
       } else {
-        const optionsPromise = loadOptions(this.projectRoot, modulePath.library!);
+        const settingsPromise = loadSettings(this.projectRoot, modulePath.library!);
         
-        this.loadingOptions.set(modulePath.library!, optionsPromise);
+        this.loadingSettings.set(modulePath.library!, settingsPromise);
         
-        this.options.set(modulePath.library!, await optionsPromise);
+        this.settings.set(modulePath.library!, await settingsPromise);
       }
     }
     

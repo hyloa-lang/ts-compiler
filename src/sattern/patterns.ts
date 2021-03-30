@@ -10,6 +10,8 @@ import { NonterminalsFromConstraints, createGrammarRules } from "./table-builder
 import { Grammar, GrammarSymbol, Nonterminal, RegularNt, GrammarRule, MatchNt } from "./parser.js";
 
 
+const inspect = Symbol.for('nodejs.util.inspect.custom');
+
 // Poor man's constraints. (The "real" `Constraints` type is below.)
 export type PConstraints = Record<string, string | boolean | (string | boolean)[]>;
 
@@ -82,6 +84,10 @@ export class Chars extends Pattern<SNode> {
   size: number;
   
   chars() { return this.charTable.map((b, i) => b ? Chars.getChar(i) : "").filter(a => a) }
+  
+  [inspect]() {
+    return 'Chars (' + this.chars().map(c => c === '\n' ? '\\n' : c).join('') + ')';
+  }
   
   constructor(chars: string | boolean[], negated = false) {
     super();
@@ -261,17 +267,6 @@ export class After<Node extends SyntaxTreeNode<Node>> extends Pattern<SNode> {
   }
   
   toFsa(fsa: NdMultiFsa, cover: NdMultiState, from: NdMultiState[]) {
-    if (!fsa.initial.has(this)) {
-      const top = new NdMultiState(fsa.top, null, true, null, this);
-      const init = new NdMultiState(top);
-      
-      this.expr.toFsa(fsa, top, [ init ]).forEach(s => s.isFinal = true);
-      
-      new Transition(null, top, [ fsa.initial.get(null)! ]);
-      
-      fsa.initial.set(this, top);
-    }
-    
     const to: NdMultiState = new NdMultiState(cover, this);
     
     from.forEach(state => new Transition(null, state, [ to ]));
@@ -461,7 +456,7 @@ export class Or<Node extends SyntaxTreeNode<Node>> extends Pattern<SNode> {
     constraints: Record<string, boolean>,
     key?: Nonterminal,
   ): GrammarSymbol[] {
-    if (!key) key = new RegularNt();
+    if (!key) key = new RegularNt(this);
     
     this.exprs.forEach(expr => expr.toGrammarRule(grammar, constraints, key));
     
@@ -547,12 +542,7 @@ export class Maybe<Node extends SyntaxTreeNode<Node>> extends Pattern<SNode> {
     constraints: Record<string, boolean>,
     key?: Nonterminal,
   ): GrammarSymbol[] {
-    if (!key) key = new RegularNt();
-    
-    new Caten().toGrammarRule(grammar, constraints, key);
-    this.expr.toGrammarRule(grammar, constraints, key);
-    
-    return [ key ];
+    return new Or(new Caten(), this.expr).toGrammarRule(grammar, constraints, key);
   }
 }
 
@@ -560,7 +550,8 @@ export class Repeat<Node extends SyntaxTreeNode<Node>> extends Pattern<SNode> {
   kind = 'Repeat' as 'Repeat';
   
   constructor(
-    public expr: Pattern<Node> = new Caten(),
+    // TODO exclude weird unprintable ASCII chars.
+    public expr: Pattern<Node> = new Chars('', true),
     public delimiter: Pattern<Node> = new Caten(),
     public min: number = 0,
     public max: number = Infinity,
@@ -616,7 +607,7 @@ export class Repeat<Node extends SyntaxTreeNode<Node>> extends Pattern<SNode> {
     key?: Nonterminal,
     includeDelimiter = false,
   ): GrammarSymbol[] {
-    if (!key) key = new RegularNt();
+    if (!key) key = new RegularNt(this);
     
     const delim = includeDelimiter ? this.delimiter.toGrammarRule(grammar, constraints) : [];
     const once = this.expr.toGrammarRule(grammar, constraints);
@@ -636,8 +627,15 @@ export class Repeat<Node extends SyntaxTreeNode<Node>> extends Pattern<SNode> {
     }
     
     if (this.max === Infinity) {
-      grammar.insert(new GrammarRule(key, [ ...delim, ...once ]));
-      grammar.insert(new GrammarRule(key, [ ...delim, ...once, key ]));
+      if (includeDelimiter) {
+        grammar.insert(new GrammarRule(key, []));
+        grammar.insert(new GrammarRule(key, [ ...delim, ...once, key ]));
+      } else {
+        const rest = this.toGrammarRule(grammar, constraints, undefined, true);
+        
+        grammar.insert(new GrammarRule(key, []));
+        grammar.insert(new GrammarRule(key, [ ...once, ...rest ]));
+      }
     }
     
     if (this.max !== 0 && this.max !== Infinity) {
@@ -645,7 +643,7 @@ export class Repeat<Node extends SyntaxTreeNode<Node>> extends Pattern<SNode> {
         new Repeat(this.expr, this.delimiter, 0, this.max - 1)
         .toGrammarRule(grammar, constraints, undefined, true);
       
-      grammar.insert(new GrammarRule(key, [ ...delim, ...once ]));
+      grammar.insert(new GrammarRule(key, []));
       grammar.insert(new GrammarRule(key, [ ...delim, ...once, ...rest ]));
     }
     
@@ -800,9 +798,7 @@ export class Match<
     }
     
     const nt = new MatchNt(this.prop!, null, this.isArray);
-    const arr = this.match.toGrammarRule(grammar, constraints);
-    
-    grammar.insert(new GrammarRule(nt, arr));
+    const arr = this.match.toGrammarRule(grammar, constraints, nt);
     
     if (!key) return [ nt ];
     
@@ -838,7 +834,7 @@ function constraintsSatisfy(model: Record<string, boolean>, theory: PConstraints
   return true;
 }
 
-const neverMatch = new RegularNt();
+const neverMatch = new RegularNt('neverMatch' as any);
 
 export class Equals<Node extends SyntaxTreeNode<Node>> extends Pattern<Node> {
   kind: 'Equals' = 'Equals';
@@ -876,10 +872,12 @@ export class Equals<Node extends SyntaxTreeNode<Node>> extends Pattern<Node> {
       || this.constraints instanceof Pattern) throw new Error('constraints unsupported');
     
     if (constraintsSatisfy(constraints, this.constraints)) {
+      if (key) grammar.insert(new GrammarRule(key, []))
+      
       return [];
     }
     
-    grammar.insert(new GrammarRule(neverMatch, [ neverMatch ]))
+    grammar.insert(new GrammarRule(neverMatch, [ neverMatch ]));
     
     return [ neverMatch ];
   }

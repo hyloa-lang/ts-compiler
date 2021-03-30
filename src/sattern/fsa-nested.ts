@@ -531,6 +531,8 @@ export function generateFsa(startingSymbols: Set<Symbol>): Fsa {
     symbol.preprocess(symbols, lookarounds, negated, false);
   }
   
+  console.log('Symbol count:', symbols.length);
+  
   // Make up for Javascript's shortcomings.
   for (const symbol of symbols) {
     if (!symbol.constraintKeys || !symbol.rule) {

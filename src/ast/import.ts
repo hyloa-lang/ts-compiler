@@ -16,7 +16,9 @@ export class Import extends SyntaxTreeNode<Import> {
       false,
       'path',
       new Caten(
-        // IMPROVEMENT - do not allow a file name ending with a hyphen
+        // IMPROVEMENT - do not allow a file name ending with a hyphen.
+        // Alternatively, only allow lowercase characters and hyphen in file,
+        // and uppercase all characters that follow a hype.
         new Repeat(
           new Caten( letters, new Repeat( Chars.or(numLet, new Chars('-') ) ) ),
           new Chars( '/' ),
@@ -24,10 +26,10 @@ export class Import extends SyntaxTreeNode<Import> {
         new Maybe( new Chars( '/' ) )
       ),
     ),
-    space,
     
     new Maybe(
       new Caten(
+        space,
         new Text( 'as' ),
         space,
         

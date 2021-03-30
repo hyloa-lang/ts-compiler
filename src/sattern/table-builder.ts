@@ -3,6 +3,8 @@ import { Nonterminal, GrammarSymbol, Grammar, MatchNt, ParserState, RegularNt, G
 import { generateFsa, Fsa } from "./fsa-nested.js";
 
 
+// TODO compute all nt fsa pairs upfront.
+
 export type NonterminalsFromConstraints =
   Map<boolean, NonterminalsFromConstraints | RegularNt> | RegularNt;
 
@@ -59,6 +61,102 @@ function computeZeroth(grammar: Grammar) {
       
       grammar.zerothSets.set(nt, new Context(chars, canBeEmpty));
     }
+  }
+}
+
+class NtInfo {
+  ruleAts: RuleAt[] = [];
+  indices = new Map<Fsa, number>();
+  
+  insertRuleAt(ruleAt: RuleAt) {
+    if (this.ruleAts.every(rAt => !RuleAt.equals(rAt, ruleAt))) {
+      this.ruleAts.push(ruleAt);
+    }
+  }
+  
+  insertIndex(fsaTo: Fsa, index: number): boolean {
+    if (!this.indices.has(fsaTo)) {
+      this.indices.set(fsaTo, index);
+      
+      return true;
+    }
+    
+    return false;
+  }
+}
+
+export class GrammarExplorer {
+  ntCounter = 0;
+  ntFromToTo = new Map<Nonterminal, Map<Fsa, NtInfo>>();
+  
+  constructor(
+    public grammar: Grammar,
+  ) {}
+  
+  findAllNtFsaPairs(ruleAts: RuleAt[], i = 0): void {
+    function push(ruleAt: RuleAt | null) {
+      ruleAt && ruleAts.every(rAt => !RuleAt.equals(rAt, ruleAt)) && ruleAts.push(ruleAt);
+    }
+    
+    if (ruleAts.length <= i) return;
+    
+    const ruleAt = ruleAts[i];
+    const at = ruleAt.at();
+    
+    if (at instanceof Nonterminal) {
+      const ntInfo = this.ret(at, ruleAt.fsaState);
+      
+      ntInfo.insertRuleAt(ruleAt);
+      
+      for (const [ fsaTo ] of ntInfo.indices) {
+        const shifted = ruleAt.shift(fsaTo);
+        
+        push(shifted);
+      }
+      
+      for (const rule of this.grammar.rules.filter(rule => rule.nt === at)) {
+        const shifted = new RuleAt(ruleAt.fsaState, rule, 0, ruleAt.followAt(this.grammar), ruleAt.fsaState);
+        
+        push(shifted);
+      }
+    }
+    
+    if (at instanceof Chars) {
+      for (const char of at.chars()) {
+        const shifted = ruleAt.shift(char);
+        
+        push(shifted);
+      }
+    }
+    
+    if (at === null) {
+      const ntInfo = this.ret(ruleAt.rule.nt, ruleAt.origFsa);
+      
+      if (ntInfo.insertIndex(ruleAt.fsaState, this.ntCounter)) {
+        
+        this.ntCounter += 1;
+        
+        for (const otherRuleAt of ntInfo.ruleAts) {
+          const shifted = otherRuleAt.shift(ruleAt.fsaState);
+          
+          shifted && ruleAts.push(shifted);
+        }
+      }
+    }
+    
+    //await new Promise(f => process.nextTick(f));
+    
+    return this.findAllNtFsaPairs(ruleAts, i + 1);
+  }
+  
+  ret(nt: Nonterminal, fsa: Fsa) {
+    this.ntFromToTo.has(nt) || this.ntFromToTo.set(nt, new Map());
+    
+    const map = this.ntFromToTo.get(nt)!;
+    
+    map.has(fsa) || map.set(fsa, new NtInfo());
+    
+    return map.get(fsa)!;
   }
 }
 
@@ -127,7 +225,7 @@ function constraintsToNonterminal(
   constraints: PConstraints,
   parentConstraints: Record<string, boolean>,
 ) {
-  const nt = prop ? new MatchNt(prop, symbol, isArray) : new RegularNt();
+  const nt = prop ? new MatchNt(prop, symbol, isArray) : new RegularNt(symbol);
   
   for (const nonterminal of constraintsToAllNonterminals(symbol, constraints, parentConstraints)) {
     grammar.insert(new GrammarRule(nt, [ nonterminal ]));
@@ -136,51 +234,12 @@ function constraintsToNonterminal(
   return nt;
 }
 
-/* This version tried to cache returned nonterminals.
-function constraintsToNonterminal(
-  symbol: Symbol,
-  constraints: PConstraints,
-  parentConstraints: Record<string, boolean>,
-  map: any = symbol.nonterminals!,
-  i = 0,
-): { nt: Nonterminal, isNew: boolean } {
-  if (i === symbol.constraintKeys.length) return { nt: map, isNew: false };
-  
-  const constraintsForKey = getConstraintsForKey(
-    symbol.constraintKeys[i],
-    constraints,
-    parentConstraints,
-    false,
-  );
-  
-  if (!map.has(constraintsForKey)) {
-    if (i + 1 === symbol.constraintKeys.length) {
-      const nt = new MatchNoneNt();
-      
-      map.set(constraintsForKey, nt);
-      
-      return { nt, isNew: true };
-    } else {
-      map.set(constraintsForKey, new Map());
-    }
-  }
-  
-  return constraintsToNonterminal(
-    symbol,
-    constraints,
-    parentConstraints,
-    map.get(constraintsForKey),
-    i + 1,
-  );
-}
-*/
-
 function createAllNonterminals(symbol: Symbol, arr: boolean[] = []): RegularNt[] | null {
   if (arr.length === 0) {
     if (symbol.nonterminals) return null;
     
     if (symbol.constraintKeys.length === 0) {
-      symbol.nonterminals = new RegularNt({});
+      symbol.nonterminals = new RegularNt(symbol, {});
       
       return [ symbol.nonterminals ];
     } else {
@@ -194,7 +253,7 @@ function createAllNonterminals(symbol: Symbol, arr: boolean[] = []): RegularNt[]
       
       if (!a.has(c)) {
         a.set(c, lastConstraint
-          ? new RegularNt(symbol.boolArrToConstraints(arr))
+          ? new RegularNt(symbol, symbol.boolArrToConstraints(arr))
           : new Map(),
         );
       }
@@ -209,12 +268,6 @@ function createAllNonterminals(symbol: Symbol, arr: boolean[] = []): RegularNt[]
   }
 }
 
-function createGrammarRule(grammar: Grammar, symbol : Symbol, nt: RegularNt) {
-  const rule = symbol.rule.toGrammarRule(grammar, nt.constraints!, nt);
-  
-  grammar.insert(new GrammarRule(nt, rule));
-}
-
 export function createGrammarRules(
   grammar: Grammar,
   symbol: Symbol,
@@ -225,50 +278,23 @@ export function createGrammarRules(
 ): Nonterminal {
   const matchNts = createAllNonterminals(symbol);
   
-  if (matchNts) matchNts.forEach(nt => createGrammarRule(grammar, symbol, nt));
+  if (matchNts) matchNts.forEach(nt => symbol.rule.toGrammarRule(grammar, nt.constraints!, nt));
   
   return constraintsToNonterminal(grammar, symbol, prop, isArray, constraints, parentConstraints);
-}
-
-class NtInfo {
-  // Sates where the nonterminal is used.
-  states: ParserState[] = [];
-  // Nonterminals to which this nonterminal can reduce.
-  fsas: Fsa[] = [];
-  
-  insertFsa(fsa: Fsa): boolean {
-    if (!this.hasFsa(fsa)) {
-      this.fsas.push(fsa);
-      
-      return true;
-    }
-    
-    return false;
-  }
-  
-  hasFsa(fsa: Fsa) { return this.fsas.includes(fsa); }
-  
-  insertState(state: ParserState) {
-    if (!this.hasState(state)) this.states.push(state);
-  }
-  
-  hasState(state: ParserState) { return this.states.includes(state); }
 }
 
 export class ParserStates {
   states: ParserState[] = [];
   
+  explorer = new GrammarExplorer(this.grammar);
+  
   constructor(
     public grammar: Grammar,
   ) {}
   
-  ntInfos = new Map<Nonterminal, Map<Fsa, NtInfo>>();
-  
   insert(state: ParserState) {
     const foundState = this.states.find(s => ParserState.equals(s, state));
     
-    // IMPROVEMENT here, you can increment a refcount if you decide to track
-    // which states are used.
     if (foundState) return foundState;
     
     this.states.push(state);
@@ -283,55 +309,34 @@ export class ParserStates {
     
     this.expand(i + 1);
   }
-  
-  retNtInfo(ntFrom: Nonterminal, fsaFrom: Fsa): NtInfo {
-    if (!this.ntInfos.has(ntFrom)) this.ntInfos.set(ntFrom, new Map());
-    
-    const map = this.ntInfos.get(ntFrom)!;
-    
-    if (!map.has(fsaFrom)) map.set(fsaFrom, new NtInfo());
-    
-    return map.get(fsaFrom)!;
-  }
-  
-  createPairIfNonexisting(
-    nt: Nonterminal,
-    fsaFrom: Fsa,
-    fsaTo: Fsa,
-  ) {
-    const ntInfo = this.retNtInfo(nt, fsaFrom);
-    const inserted = ntInfo.insertFsa(fsaTo);
-      
-    if (inserted) {
-      for (const state of ntInfo.states) {
-        // IMPROVEMENT if inefficiency is a concern, perhaps track disowned states and don't expand them
-        state.addNtTransition(this, nt, fsaFrom, fsaTo);
-      }
-    }
-  }
 }
 
 export function generateParserTables(
   startingSymbols: Set<Symbol>,
-): Map<Symbol, ParserState> {
+): [ Map<Symbol, ParserState>, Grammar, GrammarExplorer ] {
   const fsa = generateFsa(startingSymbols);
   
-  const topNonterminal = new RegularNt();
+  const topNonterminal = new RegularNt(null);
   const grammar: Grammar = new Grammar(topNonterminal);
   const parserStates = new ParserStates(grammar);
-  
   const map = new Map<Symbol, ParserState>();
+  
+  topNonterminal.isTop = true;
   
   const startingRules = [ ...startingSymbols ]
     .map((symbol): [ Symbol, Nonterminal ] => [ symbol, createGrammarRules(grammar, symbol, 'root', false) ]);
   
   computeZeroth(grammar);
   
+  grammar.prettyPrint();
+  
   for (const [ symbol, nt ] of startingRules) {
-    const rule = new GrammarRule(topNonterminal, [ nt ])
+    const rule = new GrammarRule(topNonterminal, [ nt ]);
     const ruleAt = new RuleAt(fsa, rule, 0, new Context(new Chars(""), true), fsa);
     
     if (ruleAt.isAtLookaround()) continue;
+    
+    parserStates.explorer.findAllNtFsaPairs([ ruleAt ]);
     
     const parserState = new ParserState([ ruleAt ], parserStates);
     
@@ -342,5 +347,5 @@ export function generateParserTables(
   
   parserStates.expand();
   
-  return map;
+  return [ map, grammar, parserStates.explorer ];
 }

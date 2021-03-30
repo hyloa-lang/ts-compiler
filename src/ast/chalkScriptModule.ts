@@ -19,7 +19,7 @@ export class ChalkScriptModule extends SyntaxTreeNode<ChalkScriptModule> {
     new Repeat(
       new Caten( new Match( true, Import, "imports" ), space ),
     ),
-    new Match( true, Expressions, "defs", { moduleTop: true } ),
+    new Match( false, Expressions, "defs", { moduleTop: true } ),
     space,
   );
 }
