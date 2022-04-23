@@ -12,6 +12,9 @@ import { Grammar, GrammarSymbol, Nonterminal, RegularNt, GrammarRule, MatchNt } 
 
 const inspect = Symbol.for('nodejs.util.inspect.custom');
 
+// TODO create Patterns `class Start : Pattern {}` and `class End : Pattern {}`
+// They will match the beginning / ending of the string.
+
 // Poor man's constraints. (The "real" `Constraints` type is below.)
 export type PConstraints = Record<string, string | boolean | (string | boolean)[]>;
 

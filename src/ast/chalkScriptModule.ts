@@ -13,13 +13,17 @@ export class ChalkScriptModule extends SyntaxTreeNode<ChalkScriptModule> {
   
   static constraintKeys: string[] = [];
   
-  static rule: Pattern<ChalkScriptModule> = new Caten(
+  static rule = new Caten<ChalkScriptModule>(
     new Maybe( new Caten( space, new Match( false, Comment, "moduleDoc" ) ) ),
     space,
     new Repeat(
       new Caten( new Match( true, Import, "imports" ), space ),
     ),
-    new Match( false, Expressions, "defs", { moduleTop: true } ),
-    space,
+    new Maybe(
+      new Caten(
+        new Match( false, Expressions, "defs", { moduleTop: true } ),
+        space,
+      ),
+    ),
   );
 }

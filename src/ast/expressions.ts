@@ -7,7 +7,7 @@ export class Expressions extends SyntaxTreeNode<Expressions> {
   
   static constraintKeys: string[] = [ 'moduleTop' ];
   
-  static rule: Pattern<Expressions> = new Caten(
+  static rule: Pattern<Expressions> = new Repeat(
     
   );
 }
